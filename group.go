@@ -1,94 +1,104 @@
 package router
 
-type Gs []*G
+var _ Group = &group{}
 
-type G struct {
-	root     *root
+type group struct {
+	*root
 	mids     []Middleware
-	noAppend []*R
+	noAppend []*route
 	extra    []Extra
 }
 
-func newG(r *root, mids ...Middleware) *G {
-	return (&G{
-		root:     r,
-		mids:     make([]Middleware, 0, len(mids)),
-		noAppend: []*R{},
+func newG(root *root, mids ...Middleware) *group {
+	if len(mids) > 0 {
+		checkMiddleware(mids...)
+	}
+	return &group{
+		root:     root,
+		mids:     mids,
+		noAppend: []*route{},
 		extra:    make([]Extra, 0, 1),
-	}).Use(mids...)
+	}
 }
 
-func NewG(mids ...Middleware) *G {
-	return (&G{
-		mids:     make([]Middleware, 0, len(mids)),
-		noAppend: []*R{},
-	}).Use(mids...)
+// NewRouter new Router, Handler is a function type
+func (g *group) NewRouter(path Path, handler Handler, handlers ...Handler) Router {
+	r := newR(g.root, path, []*group{g}, handler, handlers[:]...)
+	g.tidy()
+	return r
 }
 
-func (g *G) Use(mids ...Middleware) *G {
+// Use same as Middleware func, Middleware is a function type
+func (g *group) Use(mids ...Middleware) Group {
 	if len(mids) > 0 {
 		g.mids = append(g.mids, checkMiddleware(mids...)...)
+	}
+	return g.tidy()
+}
+
+// Add same as Register func, Handler is a function type
+func (g *group) Add(path Path, handler Handler, handlers ...Handler) Group {
+	r := newR(g.root, path, []*group{g}, handler, handlers[:]...)
+	return g.add(r)
+}
+
+// Middleware same as Use func, Middleware is a function type
+func (g *group) Middleware(mids ...Middleware) Group {
+	return g.Use(mids...)
+}
+
+// Register same as Add func, Handler is a function type
+func (g *group) Register(path Path, handler Handler, extra ...Extra) Group {
+	g.add(newR(g.root, path, []*group{g}, checkHandler(handler)[0]).withExtra(extra...))
+	return g.tidy()
+}
+
+// Root return Root interface
+func (g *group) Root() Root {
+	return g.root
+}
+
+// WithExtra with extra
+func (g *group) WithExtra(extra ...Extra) Group {
+	for _, v := range extra {
+		g.extra = append(g.extra, v)
+	}
+	return g.tidy()
+}
+
+func (g *group) withRoot(root *root) *group {
+	g.root = root
+	if g.root == nil {
+		return g
+	}
+	if len(g.noAppend) > 0 {
+		g.root.addR(g.noAppend...)
+		g.noAppend = []*route{}
 	}
 	return g
 }
 
-func (g *G) add(r *R) *G {
+func (g *group) add(r *route) *group {
 	if g.root == nil {
 		g.noAppend = append(g.noAppend, r)
 		return g
 	}
 	if len(g.noAppend) > 0 {
-		g.root.AddR(g.noAppend...)
-		g.noAppend = []*R{}
+		g.root.addR(g.noAppend...)
+		g.noAppend = []*route{}
 	}
-	g.root.AddR(r)
+	g.root.addR(r)
 	return g
 }
 
-func (g *G) Add(path Path, handler Handler, handlers ...Handler) *G {
-	r := NewR(path, Gs{g}, handler, handlers[:]...)
-	return g.add(r)
-}
-
-func (g *G) AddR(rts ...*R) *G {
-	for _, r := range rts {
-		r.WithG(g)
-		g.add(r)
-	}
-	return g
-}
-
-func (g *G) Root() Router {
-	return g.root
-}
-
-func (g *G) WithExtra(extra ...Extra) *G {
-	for _, v := range extra {
-		g.extra = append(g.extra, v)
-	}
-	return g
-}
-
-func (g *G) withRoot(r *root) *G {
-	g.root = r
-	if g.root == nil {
-		return g
-	}
-	if len(g.noAppend) > 0 {
-		g.root.AddR(g.noAppend...)
-		g.noAppend = []*R{}
-	}
-	return g
-}
-
-func (g *G) tidy() *G {
+func (g *group) tidy() *group {
 	if g.root != nil {
 		g.root.tidy()
 	}
 	return g
 }
 
-func (g *G) rtidy() bool {
+func (g *group) rtidy() bool {
 	if g.root != nil {
 		g.root.tidy()
 		return true

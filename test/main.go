@@ -14,16 +14,16 @@ type Context struct {
 	Name  string
 }
 
-func DiyRouter(md router.Customer[router.Handler], args ...interface{}) bool {
-	fmt.Println("router begin", md.Call().String(), args)
+func DiyRouter(ctx context.Context, args ...interface{}) bool {
+	fmt.Println("router begin", router.GetCallFromContext(ctx).String(), args)
 	ins := make([]reflect.Value, 0, len(args))
 	for _, v := range args {
 		ins = append(ins, reflect.ValueOf(v))
 	}
-	ctx := args[0].(*Context)
-	fmt.Printf("ctx: %v\n", ctx)
-	md.Call().Call(ins)
-	if ctx.Abort {
+	rctx := args[0].(*Context)
+	fmt.Printf("router rctx: %v\n", rctx)
+	router.GetCallFromContext(ctx).Call(ins)
+	if rctx.Abort {
 		return false
 	}
 	return true
@@ -31,8 +31,8 @@ func DiyRouter(md router.Customer[router.Handler], args ...interface{}) bool {
 
 func main() {
 	fmt.Println("Hello World")
-	r := router.NewRouter(router.WithRouter(DiyRouter), router.WithMiddleware(func(em router.Customer[router.Middleware], args ...interface{}) bool {
-		fmt.Println("skip all mid", em.Extra(), em.Call().String())
+	r := router.NewRouter(router.WithRouter(DiyRouter), router.WithMiddleware(func(ctx context.Context, args ...interface{}) bool {
+		fmt.Println("skip all mid", router.GetExtraFromContext(ctx), router.GetCallFromContext(ctx).String())
 		return true
 	}))
 
@@ -48,7 +48,7 @@ func main() {
 		fmt.Printf("string-2 ctx: %v req: %v\n", ctx, req)
 	})
 
-	g := r.NewG(func(ctx *Context, req interface{}) string {
+	g := r.NewGroup(func(ctx *Context, req interface{}) string {
 		fmt.Println("group 1")
 		return ""
 	}).WithExtra(router.Labels{"name": "group 1"})

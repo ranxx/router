@@ -1,41 +1,27 @@
 package router
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 )
 
+// Labels labels
 type Labels map[string]interface{}
 
+// IHandler func
 type IHandler interface {
 	Handler | Middleware
 }
 
-type Customer[T IHandler] interface {
-	Call() reflect.Value
-	Origin() T
-	Extra() []Extra
-}
-
-// type ExecMetadata[T IHandler] struct {
-// 	Call   reflect.Value
-// 	Origin T
-// 	Extra  []Extra
-// }
-
-type Exec[T IHandler] func(p Customer[T], args ...interface{}) bool
-
-// // CustomeRouter len(args) == len(Handler args) == len(Middleware args) == len(Router args)
-// type CustomeRouter func(orgin Handler, call reflect.Value, args ...interface{}) bool
-
-// // CustomeMiddleware len(args) == len(Handler args) == len(Middleware args) == len(Router args)
-// type CustomeMiddleware func(origin Middleware, call reflect.Value, args ...interface{}) bool
+// Exec custome Handler Middleware exec
+type Exec func(ctx context.Context, args ...interface{}) bool
 
 // Options options
 type Options struct {
-	Type       RouterType       `default:"0" md:"router type"`
-	Router     Exec[Handler]    `md:"return false break"`
-	Middleware Exec[Middleware] `md:"return false break"`
+	ty         RouterType `default:"0" md:"router type"`
+	router     Exec       `md:"return false break"`
+	middleware Exec       `md:"return false break"`
 }
 
 // Option option
@@ -44,27 +30,27 @@ type Option func(*Options)
 // WithType with route type
 func WithType(rt RouterType) Option {
 	return func(o *Options) {
-		o.Type = rt
+		o.ty = rt
 	}
 }
 
 // WithRouter with custome router exec
-func WithRouter(router Exec[Handler]) Option {
+func WithRouter(router Exec) Option {
 	return func(o *Options) {
-		o.Router = router
+		o.router = router
 	}
 }
 
 // WithMiddleware with custome middleware exec
-func WithMiddleware(router Exec[Middleware]) Option {
+func WithMiddleware(router Exec) Option {
 	return func(o *Options) {
-		o.Middleware = router
+		o.middleware = router
 	}
 }
 
 func newDefaultOptions() *Options {
 	return &Options{
-		Type: Type,
+		ty: Type,
 	}
 }
 

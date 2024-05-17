@@ -5,110 +5,14 @@ import (
 	"reflect"
 )
 
-// RouterType router type
-type RouterType int
-
-// const
-const (
-	Type  RouterType = 0
-	Value RouterType = 1
-)
-
-// Handler handler
-type Handler interface{}
-
-// Middleware middleware
-type Middleware interface{}
-
-// Path path
-type Path interface{}
-
-// Extra extra
-type Extra interface{}
-
-// // Register register
-// type Register interface {
-// 	// Register register
-// 	Register(path Path, cb Handler, extra ...Extra)
-// }
-
-// // Router router
-// type Router interface {
-// 	// Register router register
-// 	Register(path Path, cb Handler, extra ...Extra)
-
-// 	// Router path to router
-// 	Router(path Path, args ...interface{})
-
-// 	// Range fc params is the same as the Register params
-// 	Range(fc interface{})
-// }
-
-// var _ Router = &Root{}
-// var _ Register = &Root{}
-
-// []extra
-// origin
-// call
-
 type metadata struct {
 	extra  []Extra
 	origin interface{}
 	call   reflect.Value
 }
 
-// func To[T IHandler](m *metadata) *ExecMetadata[T] {
-// 	return &ExecMetadata[T]{
-// 		Call:   m.call,
-// 		Origin: m.origin.(T),
-// 		Extra:  &m.extra,
-// 	}
-// }
-
-// type Param[T IHandler] interface {
-// 	Call() reflect.Value
-// 	Origin() T
-// 	Extra() *[]Extra
-// }
-
-// func (m *metadata) Call() reflect.Value {
-// 	return m.call
-// }
-
-// func (m *metadata) Origin() T {
-// 	return m.origin.(T)
-// }
-
-// func To[T IHandler] () *ExecMetadata[T] {
-// 	return &ExecMetadata[T]{
-// 		Call:   m.call,
-// 		Origin: m.origin.(T),
-// 		extra:  &m.extra,
-// 	}
-// }
-
-func metadataToCustomer[T IHandler](m *metadata) Customer[T] {
-	return &metadataAdapter[T]{metadata: m}
-}
-
-type metadataAdapter[T IHandler] struct {
-	*metadata
-}
-
-func (p *metadataAdapter[T]) Origin() T {
-	return p.metadata.origin.(T)
-}
-
-func (p *metadataAdapter[T]) Call() reflect.Value {
-	return p.metadata.call
-}
-
-func (p *metadataAdapter[T]) Extra() []Extra {
-	return p.metadata.extra
-}
-
 type params struct {
-	origin    *R
+	origin    *route
 	_handlers []*metadata
 	_mids     []*metadata
 	_all      []reflect.Value
@@ -117,84 +21,65 @@ type params struct {
 // root root
 type root struct {
 	rt             RouterType
-	routerExec     Exec[Handler]
-	middlewareExec Exec[Middleware]
-	group          *G
+	routerExec     Exec
+	middlewareExec Exec
+	group          *group
 	routers        map[Path]*params
-	groups         map[*G]struct{}
+	groups         map[*group]struct{}
 }
 
 // NewRouter new rotuer root
-func NewRouter(opts ...Option) Router {
+func NewRouter(opts ...Option) Root {
 	opt := newDefaultOptions()
 	for _, v := range opts {
 		v(opt)
 	}
 	r := &root{
-		rt:             opt.Type,
-		routerExec:     opt.Router,
-		middlewareExec: opt.Middleware,
+		rt:             opt.ty,
+		routerExec:     opt.router,
+		middlewareExec: opt.middleware,
 		routers:        map[Path]*params{},
-		groups:         map[*G]struct{}{},
+		groups:         map[*group]struct{}{},
 	}
 	r.group = newG(r)
 	return r
 }
 
-// Use Middleware is a function, must the func len(args) == len(Handler args)
-func (r *root) Use(mids ...Middleware) Router {
-	r.group.Use(mids...)
-	return r.tidy()
-}
-
-// NewG new group
-func (r *root) NewG(mids ...Middleware) *G {
+// NewGroup new group, Middleware is a function type
+func (r *root) NewGroup(mids ...Middleware) Group {
 	g := newG(r, mids...)
-	r.AddG(g)
+	r.addG(g)
 	return g
 }
 
-// NewR new route
-func (r *root) NewR(path Path, gs Gs, handler Handler, handlers ...Handler) *R {
-	_r := newR(path, gs, handler, handlers[:]...)
-	r.AddR(_r)
+// NewRouter new router, handler is a function type
+func (r *root) NewRouter(path Path, handler Handler, handlers ...Handler) Router {
+	_r := newR(r, path, []*group{}, handler, handlers[:]...)
+	r.add(_r)
 	return _r
 }
 
-// Add Handler is a function, must the func len(args) == len(Middleware args)
-func (r *root) Add(path Path, handler Handler, handlers ...Handler) Router {
-	return r.add(NewR(path, Gs{}, handler, handlers...))
-}
-
-// AddR add r
-func (r *root) AddR(rts ...*R) Router {
-	for _, rt := range rts {
-		r.add(rt)
-	}
-	return r.tidy(rts...)
-}
-
-// AddG add g
-func (r *root) AddG(gs ...*G) Router {
-	for _, g := range gs {
-		if _, ok := r.groups[g]; ok {
-			continue
-		}
-		r.groups[g] = struct{}{}
-		g.withRoot(r)
-	}
-	return r.tidy()
-}
-
-// Middleware Middleware is a function, must the func len(args) == len(Handler args)
-func (r *root) Middleware(mids ...Middleware) Router {
+// Use same as Middleware func, Middleware is a function type
+func (r *root) Use(mids ...Middleware) Root {
 	r.group.Use(mids...)
 	return r.tidy()
 }
 
-// Register Handler is a function, must the func len(args) == len(Middleware args)
-func (r *root) Register(path Path, handler Handler, extra ...Extra) {
-	r.add(NewR(path, Gs{}, checkHandler(handler)[0]).WithExtra(extra...))
+// Add same as Register func, Handler is a function type
+func (r *root) Add(path Path, handler Handler, handlers ...Handler) Root {
+	return r.add(newR(r, path, []*group{}, handler, handlers...))
+}
+
+// Middleware same as Use func, Middleware is a function type
+func (r *root) Middleware(mids ...Middleware) Root {
+	r.group.Use(mids...)
+	return r.tidy()
+}
+
+// Register same as Add func, Handler is a function type
+func (r *root) Register(path Path, handler Handler, extra ...Extra) Root {
+	r.add(newR(r, path, []*group{}, checkHandler(handler)[0]).withExtra(extra...))
+	return r
 }
 
 // Router router
@@ -235,8 +120,8 @@ func (r *root) Range(fc interface{}) {
 func (r *root) routerMid(p *params, args ...interface{}) bool {
 	if r.middlewareExec != nil {
 		for _, v := range p._mids {
-			mt := metadataToCustomer[Middleware](v)
-			if !r.middlewareExec(mt, args[:]...) {
+			ctx := newContext(v)
+			if !r.middlewareExec(ctx, args[:]...) {
 				return false
 			}
 		}
@@ -255,8 +140,8 @@ func (r *root) routerMid(p *params, args ...interface{}) bool {
 func (r *root) router(p *params, args ...interface{}) bool {
 	if r.routerExec != nil {
 		for _, v := range p._handlers {
-			mt := metadataToCustomer[Handler](v)
-			if !r.routerExec(mt, args[:]...) {
+			ctx := newContext(v)
+			if !r.routerExec(ctx, args[:]...) {
 				return false
 			}
 		}
@@ -271,6 +156,7 @@ func (r *root) router(p *params, args ...interface{}) bool {
 	}
 	return true
 }
+
 func (r *root) valueType(v interface{}) interface{} {
 	if r.rt == Value {
 		return v
@@ -279,7 +165,7 @@ func (r *root) valueType(v interface{}) interface{} {
 	return t
 }
 
-func (r *root) add(rt *R) *root {
+func (r *root) add(rt *route) *root {
 	t := r.valueType(rt.path)
 	_router, ok := r.routers[t]
 	if ok {
@@ -298,7 +184,26 @@ func (r *root) add(rt *R) *root {
 	return r.tidy(rt)
 }
 
-func (r *root) tidy(rts ...*R) *root {
+func (r *root) addG(gs ...*group) *root {
+	for _, _g := range gs {
+		if _, ok := r.groups[_g]; ok {
+			continue
+		}
+		r.groups[_g] = struct{}{}
+		// g.withRoot(r)
+	}
+	return r.tidy()
+}
+
+// AddR add r
+func (r *root) addR(rts ...*route) *root {
+	for _, rt := range rts {
+		r.add(rt)
+	}
+	return r.tidy(rts...)
+}
+
+func (r *root) tidy(rts ...*route) *root {
 	fc := func(rt *params) {
 		mids := make([]*metadata, 0, 3)
 		handlers := make([]*metadata, 0, 3)
@@ -350,39 +255,4 @@ func (r *root) tidy(rts ...*R) *root {
 		fc(rt)
 	}
 	return r
-}
-
-type Router interface {
-	// NewG new group with root
-	NewG(mids ...Middleware) *G
-
-	// NewR new route without root
-	NewR(path Path, gs Gs, handler Handler, handlers ...Handler) *R
-
-	// Use same as Middleware, Middleware is a function, must the func len(args) == len(Handler args)
-	Use(mids ...Middleware) Router
-
-	// Add same as Register, Handler is a function, must the func len(args) == len(Middleware args)
-	Add(path Path, handler Handler, handlers ...Handler) Router
-
-	// AddR add r
-	AddR(rts ...*R) Router
-
-	// AddG add g
-	AddG(gs ...*G) Router
-
-	// Middleware same as Use, Middleware is a function, must the func len(args) == len(Handler args)
-	Middleware(mids ...Middleware) Router
-
-	// Register same as Add, Handler is a function, must the func len(args) == len(Middleware args)
-	Register(path Path, handler Handler, extra ...Extra)
-
-	// Router router
-	Router(path Path, args ...interface{})
-
-	// Handlers get handlers
-	Handlers(path Path) []reflect.Value
-
-	// Range fc(path, []Handlers, [extra...])
-	Range(fc interface{})
 }
